@@ -1,11 +1,13 @@
-// Package vast implements IAB VAST 3.0 specification http://www.iab.net/media/file/VASTv3.0.pdf
+// Package vast implements struct mappings for IAB VAST 2.0 and 3.0, plus
+// core VAST 4.0 fields. It does not perform VAST XSD validation or implement
+// video player execution rules.
 package vast
 
 import "encoding/xml"
 
 // VAST is the root <VAST> tag
 type VAST struct {
-	// The version of the VAST spec (should be either "2.0" or "3.0")
+	// The version of the VAST spec (e.g. "2.0", "3.0", "4.0")
 	Version string `xml:"version,attr"`
 	// One or more Ad elements. Advertisers and video content publishers may
 	// associate an <Ad> element with a line item video ad defined in contract
@@ -27,9 +29,11 @@ type Ad struct {
 	// A number greater than zero (0) that identifies the sequence in which
 	// an ad should play; all <Ad> elements with sequence values are part of
 	// a pod and are intended to be played in sequence
-	Sequence int      `xml:"sequence,attr,omitempty"`
-	InLine   *InLine  `xml:",omitempty"`
-	Wrapper  *Wrapper `xml:",omitempty"`
+	Sequence int `xml:"sequence,attr,omitempty"`
+	// A Boolean value that identifies a conditional ad in VAST 4.0.
+	ConditionalAd *bool    `xml:"conditionalAd,attr,omitempty"`
+	InLine        *InLine  `xml:",omitempty"`
+	Wrapper       *Wrapper `xml:",omitempty"`
 }
 
 // CDATAString ...
@@ -50,6 +54,8 @@ type InLine struct {
 	// One or more URIs that directs the video player to a tracking resource file that the
 	// video player should request when the first frame of the ad is displayed
 	Impressions []Impression `xml:"Impression"`
+	// Ad content categories introduced in VAST 4.0.
+	Categories []Category `xml:"Category,omitempty"`
 	// The container for one or more <Creative> elements
 	Creatives []Creative `xml:"Creatives>Creative"`
 	// A string value that provides a longer description of the ad.
@@ -61,15 +67,19 @@ type InLine struct {
 	// elements, the video player is not required to support it.
 	Advertiser string `xml:",omitempty"`
 	// A URI to a survey vendor that could be the survey, a tracking pixel,
-	// or anything to do with the survey. Multiple survey elements can be provided.
+	// or anything to do with the survey. Multiple survey elements may be provided.
 	// A type attribute is available to specify the MIME type being served.
 	// For example, the attribute might be set to type=”text/javascript”.
 	// Surveys can be dynamically inserted into the VAST response as long as
 	// cross-domain issues are avoided.
-	Survey CDATAString `xml:",omitempty"`
+	Surveys []Survey `xml:"Survey,omitempty"`
 	// A URI representing an error-tracking pixel; this element can occur multiple
 	// times.
 	Errors []CDATAString `xml:"Error,omitempty"`
+	// Viewability tracking URLs introduced in VAST 4.0.
+	ViewableImpression *ViewableImpression `xml:",omitempty"`
+	// Verification code resources introduced in VAST 4.0.
+	AdVerifications *AdVerifications `xml:",omitempty"`
 	// Provides a value that represents a price that can be used by real-time bidding
 	// (RTB) systems. VAST is not designed to handle RTB since other methods exist,
 	// but this element is offered for custom solutions if needed.
@@ -84,6 +94,51 @@ type InLine struct {
 // Impression is a URI that directs the video player to a tracking resource file that
 // the video player should request when the first frame of the ad is displayed
 type Impression struct {
+	ID  string `xml:"id,attr,omitempty"`
+	URI string `xml:",cdata"`
+}
+
+// Survey is a URI to a survey resource, with an optional MIME type.
+type Survey struct {
+	Type  string `xml:"type,attr,omitempty"`
+	CDATA string `xml:",cdata"`
+}
+
+// Category describes an ad content category and its authority.
+type Category struct {
+	Authority string `xml:"authority,attr,omitempty"`
+	Value     string `xml:",chardata"`
+}
+
+// ViewableImpression contains VAST 4.0 viewability tracking resources.
+type ViewableImpression struct {
+	ID               string        `xml:"id,attr,omitempty"`
+	Viewables        []CDATAString `xml:"Viewable,omitempty"`
+	NotViewables     []CDATAString `xml:"NotViewable,omitempty"`
+	ViewUndetermined []CDATAString `xml:"ViewUndetermined,omitempty"`
+}
+
+// AdVerifications contains VAST 4.0 verification resources.
+type AdVerifications struct {
+	Verifications []Verification `xml:"Verification,omitempty"`
+}
+
+// Verification contains executable verification resources from a vendor.
+type Verification struct {
+	Vendor              string                          `xml:"vendor,attr,omitempty"`
+	JavaScriptResources []VerificationResource          `xml:"JavaScriptResource,omitempty"`
+	FlashResources      []VerificationResource          `xml:"FlashResource,omitempty"`
+	ViewableImpression  *VerificationViewableImpression `xml:",omitempty"`
+}
+
+// VerificationResource is a JavaScript or Flash verification resource.
+type VerificationResource struct {
+	APIFramework string `xml:"apiFramework,attr,omitempty"`
+	URI          string `xml:",cdata"`
+}
+
+// VerificationViewableImpression is a verification vendor viewability URL.
+type VerificationViewableImpression struct {
 	ID  string `xml:"id,attr,omitempty"`
 	URI string `xml:",cdata"`
 }
@@ -121,6 +176,13 @@ type Wrapper struct {
 	// A URI representing an error-tracking pixel; this element can occur multiple
 	// times.
 	Errors []CDATAString `xml:"Error,omitempty"`
+	// Provides a value that represents a price that can be used by real-time bidding
+	// (RTB) systems.
+	Pricing *Pricing `xml:",omitempty"`
+	// Viewability tracking URLs introduced in VAST 4.0.
+	ViewableImpression *ViewableImpression `xml:",omitempty"`
+	// Verification code resources introduced in VAST 4.0.
+	AdVerifications *AdVerifications `xml:",omitempty"`
 	// The container for one or more <Creative> elements
 	Creatives []CreativeWrapper `xml:"Creatives>Creative"`
 	// XML node for custom extensions, as defined by the ad server. When used, a
@@ -172,6 +234,20 @@ type Creative struct {
 	CreativeExtensions *[]Extension `xml:"CreativeExtensions>CreativeExtension,omitempty"`
 }
 
+// UnmarshalXML implements xml.Unmarshaler for Creative.
+func (c *Creative) UnmarshalXML(dec *xml.Decoder, start xml.StartElement) error {
+	type creative Creative
+	var out creative
+	if err := dec.DecodeElement(&out, &start); err != nil {
+		return err
+	}
+	if out.AdID == "" {
+		out.AdID = adIDAttr(start)
+	}
+	*c = Creative(out)
+	return nil
+}
+
 // CompanionAds contains companions creatives
 type CompanionAds struct {
 	// Provides information about which companion creative to display.
@@ -202,6 +278,29 @@ type CreativeWrapper struct {
 	CompanionAds *CompanionAdsWrapper `xml:"CompanionAds,omitempty"`
 	// If defined, defines non linear creatives
 	NonLinearAds *NonLinearAdsWrapper `xml:"NonLinearAds,omitempty"`
+}
+
+// UnmarshalXML implements xml.Unmarshaler for CreativeWrapper.
+func (c *CreativeWrapper) UnmarshalXML(dec *xml.Decoder, start xml.StartElement) error {
+	type creativeWrapper CreativeWrapper
+	var out creativeWrapper
+	if err := dec.DecodeElement(&out, &start); err != nil {
+		return err
+	}
+	if out.AdID == "" {
+		out.AdID = adIDAttr(start)
+	}
+	*c = CreativeWrapper(out)
+	return nil
+}
+
+func adIDAttr(start xml.StartElement) string {
+	for _, attr := range start.Attr {
+		if attr.Name.Local == "adId" {
+			return attr.Value
+		}
+	}
+	return ""
 }
 
 // CompanionAdsWrapper contains companions creatives in a wrapper
@@ -237,12 +336,14 @@ type Linear struct {
 	// begins playing.
 	SkipOffset *Offset `xml:"skipoffset,attr,omitempty"`
 	// Duration in standard time format, hh:mm:ss
-	Duration       Duration
-	AdParameters   *AdParameters `xml:",omitempty"`
-	Icons          *Icons
-	TrackingEvents []Tracking   `xml:"TrackingEvents>Tracking,omitempty"`
-	VideoClicks    *VideoClicks `xml:",omitempty"`
-	MediaFiles     []MediaFile  `xml:"MediaFiles>MediaFile,omitempty"`
+	Duration                 Duration
+	AdParameters             *AdParameters `xml:",omitempty"`
+	Icons                    *Icons
+	TrackingEvents           []Tracking                `xml:"TrackingEvents>Tracking,omitempty"`
+	VideoClicks              *VideoClicks              `xml:",omitempty"`
+	MediaFiles               []MediaFile               `xml:"MediaFiles>MediaFile,omitempty"`
+	Mezzanine                *Mezzanine                `xml:"MediaFiles>Mezzanine,omitempty"`
+	InteractiveCreativeFiles []InteractiveCreativeFile `xml:"MediaFiles>InteractiveCreativeFile,omitempty"`
 }
 
 // LinearWrapper defines a wrapped linear creative
@@ -272,6 +373,8 @@ type Companion struct {
 	APIFramework string `xml:"apiFramework,attr,omitempty"`
 	// Used to match companion creative to publisher placement areas on the page.
 	AdSlotID string `xml:"adSlotId,attr,omitempty"`
+	// Pixel ratio for which the companion creative is intended.
+	PXRatio string `xml:"pxratio,attr,omitempty"`
 	// URL to open as destination page when user clicks on the the companion banner ad.
 	CompanionClickThrough CDATAString `xml:",omitempty"`
 	// URLs to ping when user clicks on the the companion banner ad.
@@ -312,6 +415,8 @@ type CompanionWrapper struct {
 	APIFramework string `xml:"apiFramework,attr,omitempty"`
 	// Used to match companion creative to publisher placement areas on the page.
 	AdSlotID string `xml:"adSlotId,attr,omitempty"`
+	// Pixel ratio for which the companion creative is intended.
+	PXRatio string `xml:"pxratio,attr,omitempty"`
 	// URL to open as destination page when user clicks on the the companion banner ad.
 	CompanionClickThrough CDATAString `xml:",omitempty"`
 	// URLs to ping when user clicks on the the companion banner ad.
@@ -419,10 +524,14 @@ type Icon struct {
 	Duration Duration `xml:"duration,attr"`
 	// The apiFramework defines the method to use for communication with the icon element
 	APIFramework string `xml:"apiFramework,attr,omitempty"`
+	// Pixel ratio for which the icon creative is intended.
+	PXRatio string `xml:"pxratio,attr,omitempty"`
 	// URL to open as destination page when user clicks on the icon.
 	IconClickThrough CDATAString `xml:"IconClicks>IconClickThrough,omitempty"`
 	// URLs to ping when user clicks on the the icon.
 	IconClickTrackings []CDATAString `xml:"IconClicks>IconClickTracking,omitempty"`
+	// URLs to ping when the icon is displayed.
+	IconViewTrackings []CDATAString `xml:"IconViewTracking,omitempty"`
 	// URL to a static file, such as an image or SWF file
 	StaticResource *StaticResource `xml:",omitempty"`
 	// URL source for an IFrame to display the companion element
@@ -515,6 +624,18 @@ type MediaFile struct {
 	// is interactive. Suggested values for this element are “VPAID”, “FlashVars”
 	// (for Flash/Flex), “initParams” (for Silverlight) and “GetVariables” (variables
 	// placed in key/value pairs on the asset request).
+	APIFramework string `xml:"apiFramework,attr,omitempty"`
+	URI          string `xml:",cdata"`
+}
+
+// Mezzanine describes a raw, high-quality VAST 4.0 source media file.
+type Mezzanine struct {
+	URI string `xml:",cdata"`
+}
+
+// InteractiveCreativeFile describes a VAST 4.0 interactive creative resource.
+type InteractiveCreativeFile struct {
+	Type         string `xml:"type,attr,omitempty"`
 	APIFramework string `xml:"apiFramework,attr,omitempty"`
 	URI          string `xml:",cdata"`
 }

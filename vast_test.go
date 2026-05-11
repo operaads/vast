@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -264,7 +265,9 @@ func TestInlineNonLinear(t *testing.T) {
 			assert.Equal(t, "Acudeo Compatible", inline.AdSystem.Name)
 			assert.Equal(t, "NonLinear Test Campaign 1", inline.AdTitle.CDATA)
 			assert.Equal(t, "NonLinear Test Campaign 1", inline.Description.CDATA)
-			assert.Equal(t, "http://mySurveyURL/survey", inline.Survey.CDATA)
+			if assert.Len(t, inline.Surveys, 1) {
+				assert.Equal(t, "http://mySurveyURL/survey", inline.Surveys[0].CDATA)
+			}
 			if assert.Len(t, inline.Errors, 1) {
 				assert.Equal(t, "http://myErrorURL/error", inline.Errors[0].CDATA)
 			}
@@ -623,11 +626,19 @@ func TestUniversalAdID(t *testing.T) {
 	if assert.Len(t, v.Ads, 1) {
 		ad := v.Ads[0]
 		assert.Equal(t, "20008", ad.ID)
+		if assert.NotNil(t, ad.ConditionalAd) {
+			assert.False(t, *ad.ConditionalAd)
+		}
 		if assert.NotNil(t, ad.InLine) {
+			if assert.Len(t, ad.InLine.Categories, 1) {
+				assert.Equal(t, "http://www.iabtechlab.com/categoryauthority", ad.InLine.Categories[0].Authority)
+				assert.Equal(t, "AD CONTENT description category", ad.InLine.Categories[0].Value)
+			}
 			if assert.NotNil(t, ad.InLine.Extensions) {
 				if assert.Len(t, ad.InLine.Creatives, 1) {
 					if assert.NotNil(t, ad.InLine.Creatives[0].UniversalAdID) {
 						creative := ad.InLine.Creatives[0]
+						assert.Equal(t, "2447226", creative.AdID)
 						assert.Equal(t, "Ad-ID", creative.UniversalAdID.IDRegistry)
 						assert.Equal(t, "8465", creative.UniversalAdID.IDValue)
 						assert.Equal(t, "8465", creative.UniversalAdID.ID)
@@ -636,4 +647,158 @@ func TestUniversalAdID(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestVAST4CoreFeatures(t *testing.T) {
+	v, _, _, err := loadFixture("testdata/vast4_core_features.xml")
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	assert.Equal(t, "4.0", v.Version)
+	if assert.Len(t, v.Ads, 2) {
+		ad := v.Ads[0]
+		if assert.NotNil(t, ad.ConditionalAd) {
+			assert.True(t, *ad.ConditionalAd)
+		}
+		if assert.NotNil(t, ad.InLine) {
+			inline := ad.InLine
+			if assert.Len(t, inline.Categories, 1) {
+				assert.Equal(t, "https://iabtechlab.com/categoryauthority", inline.Categories[0].Authority)
+				assert.Equal(t, "IAB1", inline.Categories[0].Value)
+			}
+			if assert.Len(t, inline.Surveys, 1) {
+				assert.Equal(t, "text/javascript", inline.Surveys[0].Type)
+				assert.Equal(t, "https://example.com/survey.js", inline.Surveys[0].CDATA)
+			}
+			if assert.NotNil(t, inline.ViewableImpression) {
+				assert.Equal(t, "view-1", inline.ViewableImpression.ID)
+				assert.Equal(t, "https://example.com/viewable", inline.ViewableImpression.Viewables[0].CDATA)
+				assert.Equal(t, "https://example.com/not-viewable", inline.ViewableImpression.NotViewables[0].CDATA)
+				assert.Equal(t, "https://example.com/undetermined", inline.ViewableImpression.ViewUndetermined[0].CDATA)
+			}
+			if assert.NotNil(t, inline.AdVerifications) {
+				if assert.Len(t, inline.AdVerifications.Verifications, 1) {
+					verification := inline.AdVerifications.Verifications[0]
+					assert.Equal(t, "https://verification.example.com", verification.Vendor)
+					assert.Equal(t, "omid", verification.JavaScriptResources[0].APIFramework)
+					assert.Equal(t, "https://example.com/omid.js", verification.JavaScriptResources[0].URI)
+					assert.Equal(t, "vpaid", verification.FlashResources[0].APIFramework)
+					assert.Equal(t, "https://example.com/verification.swf", verification.FlashResources[0].URI)
+					if assert.NotNil(t, verification.ViewableImpression) {
+						assert.Equal(t, "verification-view", verification.ViewableImpression.ID)
+						assert.Equal(t, "https://example.com/verification-viewable", verification.ViewableImpression.URI)
+					}
+				}
+			}
+			if assert.Len(t, inline.Creatives, 1) {
+				creative := inline.Creatives[0]
+				assert.Equal(t, "creative-server-id", creative.AdID)
+				if assert.NotNil(t, creative.Linear) {
+					linear := creative.Linear
+					if assert.NotNil(t, linear.Mezzanine) {
+						assert.Equal(t, "https://example.com/mezzanine.mov", linear.Mezzanine.URI)
+					}
+					if assert.Len(t, linear.InteractiveCreativeFiles, 1) {
+						interactive := linear.InteractiveCreativeFiles[0]
+						assert.Equal(t, "application/javascript", interactive.Type)
+						assert.Equal(t, "VPAID", interactive.APIFramework)
+						assert.Equal(t, "https://example.com/vpaid.js", interactive.URI)
+					}
+					if assert.NotNil(t, linear.Icons) {
+						if assert.Len(t, linear.Icons.Icon, 1) {
+							icon := linear.Icons.Icon[0]
+							assert.Equal(t, "2", icon.PXRatio)
+							assert.Equal(t, "https://example.com/icon-view", icon.IconViewTrackings[0].CDATA)
+						}
+					}
+				}
+				if assert.NotNil(t, creative.CompanionAds) {
+					if assert.Len(t, creative.CompanionAds.Companions, 1) {
+						assert.Equal(t, "2", creative.CompanionAds.Companions[0].PXRatio)
+					}
+				}
+			}
+		}
+
+		wrapperAd := v.Ads[1]
+		if assert.NotNil(t, wrapperAd.Wrapper) {
+			wrapper := wrapperAd.Wrapper
+			if assert.NotNil(t, wrapper.Pricing) {
+				assert.Equal(t, "cpm", wrapper.Pricing.Model)
+				assert.Equal(t, "USD", wrapper.Pricing.Currency)
+				assert.Equal(t, "1.23", strings.TrimSpace(wrapper.Pricing.Value))
+			}
+			if assert.NotNil(t, wrapper.ViewableImpression) {
+				assert.Equal(t, "wrapper-view", wrapper.ViewableImpression.ID)
+				assert.Equal(t, "https://example.com/wrapper-viewable", wrapper.ViewableImpression.Viewables[0].CDATA)
+			}
+			if assert.NotNil(t, wrapper.AdVerifications) {
+				if assert.Len(t, wrapper.AdVerifications.Verifications, 1) {
+					assert.Equal(t, "https://wrapper-verification.example.com", wrapper.AdVerifications.Verifications[0].Vendor)
+					assert.Equal(t, "https://example.com/wrapper-omid.js", wrapper.AdVerifications.Verifications[0].JavaScriptResources[0].URI)
+				}
+			}
+			if assert.Len(t, wrapper.Creatives, 1) {
+				assert.Equal(t, "wrapper-creative-server-id", wrapper.Creatives[0].AdID)
+			}
+		}
+	}
+}
+
+func TestCreativeMarshalKeepsLegacyAdIDAttribute(t *testing.T) {
+	out, err := xml.Marshal(Creative{AdID: "legacy-ad-id"})
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	assert.Contains(t, string(out), `AdID="legacy-ad-id"`)
+	assert.NotContains(t, string(out), `adId="legacy-ad-id"`)
+}
+
+func TestLinearMarshalKeepsVAST4MediaFilesInOneContainer(t *testing.T) {
+	out, err := xml.Marshal(Linear{
+		Duration: Duration(15 * time.Second),
+		MediaFiles: []MediaFile{{
+			Delivery: "progressive",
+			Type:     "video/mp4",
+			Width:    1280,
+			Height:   720,
+			URI:      "https://example.com/ad.mp4",
+		}},
+		Mezzanine: &Mezzanine{URI: "https://example.com/mezzanine.mov"},
+		InteractiveCreativeFiles: []InteractiveCreativeFile{{
+			Type:         "application/javascript",
+			APIFramework: "VPAID",
+			URI:          "https://example.com/vpaid.js",
+		}},
+	})
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	xmlOut := string(out)
+	assert.Equal(t, 1, strings.Count(xmlOut, "<MediaFiles>"))
+	assert.Contains(t, xmlOut, "<MediaFile")
+	assert.Contains(t, xmlOut, "<Mezzanine>")
+	assert.Contains(t, xmlOut, "<InteractiveCreativeFile")
+}
+
+func TestInLineMarshalSurveyType(t *testing.T) {
+	out, err := xml.Marshal(InLine{
+		Surveys: []Survey{{
+			Type:  "text/javascript",
+			CDATA: "https://example.com/survey.js",
+		}},
+	})
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	assert.Contains(t, string(out), `<Survey type="text/javascript"><![CDATA[https://example.com/survey.js]]></Survey>`)
+}
+
+func TestInLineDoesNotExposeLegacySurveyField(t *testing.T) {
+	_, ok := reflect.TypeOf(InLine{}).FieldByName("Survey")
+	assert.False(t, ok)
 }

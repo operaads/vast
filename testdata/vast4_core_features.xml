@@ -1,0 +1,72 @@
+<VAST version="4.0" xmlns="http://www.iab.com/VAST">
+  <Ad id="ad-1" sequence="1" conditionalAd="true">
+    <InLine>
+      <AdSystem version="4.0"><![CDATA[TestServer]]></AdSystem>
+      <AdTitle><![CDATA[VAST 4 core features]]></AdTitle>
+      <Impression id="imp-1"><![CDATA[https://example.com/impression]]></Impression>
+      <Category authority="https://iabtechlab.com/categoryauthority"><![CDATA[IAB1]]></Category>
+      <Survey type="text/javascript"><![CDATA[https://example.com/survey.js]]></Survey>
+      <ViewableImpression id="view-1">
+        <Viewable><![CDATA[https://example.com/viewable]]></Viewable>
+        <NotViewable><![CDATA[https://example.com/not-viewable]]></NotViewable>
+        <ViewUndetermined><![CDATA[https://example.com/undetermined]]></ViewUndetermined>
+      </ViewableImpression>
+      <AdVerifications>
+        <Verification vendor="https://verification.example.com">
+          <JavaScriptResource apiFramework="omid"><![CDATA[https://example.com/omid.js]]></JavaScriptResource>
+          <FlashResource apiFramework="vpaid"><![CDATA[https://example.com/verification.swf]]></FlashResource>
+          <ViewableImpression id="verification-view"><![CDATA[https://example.com/verification-viewable]]></ViewableImpression>
+        </Verification>
+      </AdVerifications>
+      <Creatives>
+        <Creative id="creative-1" sequence="1" adId="creative-server-id">
+          <UniversalAdId idRegistry="Ad-ID" idValue="universal-123">universal-123</UniversalAdId>
+          <Linear>
+            <Duration>00:00:15</Duration>
+            <MediaFiles>
+              <Mezzanine><![CDATA[https://example.com/mezzanine.mov]]></Mezzanine>
+              <MediaFile id="media-1" delivery="progressive" type="video/mp4" bitrate="1200" width="1280" height="720"><![CDATA[https://example.com/ad.mp4]]></MediaFile>
+              <InteractiveCreativeFile type="application/javascript" apiFramework="VPAID"><![CDATA[https://example.com/vpaid.js]]></InteractiveCreativeFile>
+            </MediaFiles>
+            <Icons>
+              <Icon program="AdChoices" width="20" height="20" xPosition="right" yPosition="top" offset="00:00:00" duration="00:00:15" pxratio="2">
+                <StaticResource creativeType="image/png"><![CDATA[https://example.com/icon.png]]></StaticResource>
+                <IconViewTracking><![CDATA[https://example.com/icon-view]]></IconViewTracking>
+              </Icon>
+            </Icons>
+          </Linear>
+          <CompanionAds>
+            <Companion id="comp-1" width="300" height="250" pxratio="2">
+              <StaticResource creativeType="image/png"><![CDATA[https://example.com/companion.png]]></StaticResource>
+            </Companion>
+          </CompanionAds>
+        </Creative>
+      </Creatives>
+    </InLine>
+  </Ad>
+  <Ad id="wrapper-ad">
+    <Wrapper>
+      <AdSystem><![CDATA[WrapperServer]]></AdSystem>
+      <VASTAdTagURI><![CDATA[https://example.com/wrapped-vast.xml]]></VASTAdTagURI>
+      <Impression><![CDATA[https://example.com/wrapper-impression]]></Impression>
+      <Pricing model="cpm" currency="USD"><![CDATA[1.23]]></Pricing>
+      <ViewableImpression id="wrapper-view">
+        <Viewable><![CDATA[https://example.com/wrapper-viewable]]></Viewable>
+      </ViewableImpression>
+      <AdVerifications>
+        <Verification vendor="https://wrapper-verification.example.com">
+          <JavaScriptResource apiFramework="omid"><![CDATA[https://example.com/wrapper-omid.js]]></JavaScriptResource>
+        </Verification>
+      </AdVerifications>
+      <Creatives>
+        <Creative id="wrapper-creative" adId="wrapper-creative-server-id">
+          <Linear>
+            <TrackingEvents>
+              <Tracking event="start"><![CDATA[https://example.com/wrapper-start]]></Tracking>
+            </TrackingEvents>
+          </Linear>
+        </Creative>
+      </Creatives>
+    </Wrapper>
+  </Ad>
+</VAST>
