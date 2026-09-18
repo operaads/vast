@@ -802,3 +802,94 @@ func TestInLineDoesNotExposeLegacySurveyField(t *testing.T) {
 	_, ok := reflect.TypeOf(InLine{}).FieldByName("Survey")
 	assert.False(t, ok)
 }
+
+func TestVerificationResourceBrowserOptionalUnmarshal(t *testing.T) {
+	v, _, _, err := loadFixture("testdata/vast41_browser_optional.xml")
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	assert.Equal(t, "4.1", v.Version)
+	if assert.Len(t, v.Ads, 2) {
+		inline := v.Ads[0].InLine
+		if assert.NotNil(t, inline) && assert.NotNil(t, inline.AdVerifications) {
+			verifications := inline.AdVerifications.Verifications
+			if assert.Len(t, verifications, 2) {
+				if assert.NotNil(t, verifications[0].JavaScriptResources[0].BrowserOptional) {
+					assert.True(t, *verifications[0].JavaScriptResources[0].BrowserOptional)
+				}
+				// an explicit false must be distinguishable from an absent attribute
+				if assert.NotNil(t, verifications[1].JavaScriptResources[0].BrowserOptional) {
+					assert.False(t, *verifications[1].JavaScriptResources[0].BrowserOptional)
+				}
+			}
+		}
+
+		wrapper := v.Ads[1].Wrapper
+		if assert.NotNil(t, wrapper) && assert.NotNil(t, wrapper.AdVerifications) {
+			resources := wrapper.AdVerifications.Verifications[0].JavaScriptResources
+			if assert.Len(t, resources, 1) {
+				assert.Nil(t, resources[0].BrowserOptional)
+			}
+		}
+	}
+}
+
+func TestVerificationResourceBrowserOptionalMarshal(t *testing.T) {
+	browserOptionalTrue, browserOptionalFalse := true, false
+	cases := []struct {
+		name     string
+		optional *bool
+		expected string
+	}{
+		{"unset omits the attribute", nil, `<JavaScriptResource apiFramework="omid"><![CDATA[https://example.com/omid.js]]></JavaScriptResource>`},
+		{"true", &browserOptionalTrue, `<JavaScriptResource apiFramework="omid" browserOptional="true"><![CDATA[https://example.com/omid.js]]></JavaScriptResource>`},
+		{"explicit false is written out", &browserOptionalFalse, `<JavaScriptResource apiFramework="omid" browserOptional="false"><![CDATA[https://example.com/omid.js]]></JavaScriptResource>`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := xml.Marshal(Verification{
+				Vendor: "pixalate.com-omid",
+				JavaScriptResources: []VerificationResource{{
+					APIFramework:    "omid",
+					BrowserOptional: tc.optional,
+					URI:             "https://example.com/omid.js",
+				}},
+			})
+			if !assert.NoError(t, err) {
+				return
+			}
+
+			assert.Contains(t, string(out), tc.expected)
+		})
+	}
+}
+
+func TestVerificationBrowserOptionalSurvivesRoundTrip(t *testing.T) {
+	browserOptionalTrue := true
+	out, err := xml.Marshal(Verification{
+		Vendor: "pixalate.com-omid",
+		JavaScriptResources: []VerificationResource{{
+			BrowserOptional: &browserOptionalTrue,
+			APIFramework:    "omid",
+			URI:             "https://q.adrta.com/s/opr/aan.js?cb=se123#opr",
+		}},
+	})
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Contains(t, string(out), `browserOptional="true"`)
+
+	var back Verification
+	if !assert.NoError(t, xml.Unmarshal(out, &back)) {
+		return
+	}
+	if assert.Len(t, back.JavaScriptResources, 1) {
+		assert.Equal(t, "omid", back.JavaScriptResources[0].APIFramework)
+		if assert.NotNil(t, back.JavaScriptResources[0].BrowserOptional) {
+			assert.True(t, *back.JavaScriptResources[0].BrowserOptional)
+		}
+		assert.Equal(t, "https://q.adrta.com/s/opr/aan.js?cb=se123#opr", back.JavaScriptResources[0].URI)
+	}
+}

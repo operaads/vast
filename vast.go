@@ -133,8 +133,9 @@ type Verification struct {
 
 // VerificationResource is a JavaScript or Flash verification resource.
 type VerificationResource struct {
-	APIFramework string `xml:"apiFramework,attr,omitempty"`
-	URI          string `xml:",cdata"`
+	APIFramework    string `xml:"apiFramework,attr,omitempty"`
+	BrowserOptional *bool  `xml:"browserOptional,attr,omitempty"`
+	URI             string `xml:",cdata"`
 }
 
 // VerificationViewableImpression is a verification vendor viewability URL.
